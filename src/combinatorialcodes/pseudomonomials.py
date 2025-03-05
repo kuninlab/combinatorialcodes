@@ -107,7 +107,3 @@ class PseudoMonomial:
 
     def __hash__(self):
         return hash(tuple(tuple(self.sigma), tuple(self.tau)))
-
-
-class CanonicalForm:
-    """A container for a set of pseudomonomials"""
