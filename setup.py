@@ -1,6 +1,4 @@
 from setuptools import find_packages, setup
 
-setup(
-    name="src",
-    packages=find_packages(),
-)
+if __name__ == "__main__":
+    setup()
