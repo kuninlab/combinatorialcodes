@@ -1,0 +1,456 @@
+import numpy as np
+from dataclasses import dataclass, field
+
+@dataclass(order=True)
+class Codeword:
+    c: int
+
+    def __post_init__(self):
+        self.c = int(self.c)
+
+    def __contains__(self, item: int):
+        return (self.c >> item) & 1
+    
+    def __str__(self):
+        main_part = ",".join(str(k) for k in range(int(self.c).bit_length()) if (self.c >> k) & 1)
+        return f"{{{main_part}}}"
+        # if len(main_part):
+        #     return f"{{{main_part}}}"
+        # else:
+        #     return "0"
+    
+    def __len__(self):
+        return int(self.c).bit_count()
+    
+    def __iter__(self):
+        return (i for i in range(int(self.c).bit_length()) if (self.c >> i) & 1)
+    
+    def __hash__(self):
+        return int(self.c)
+    
+    def __int__(self):
+        return self.c
+    
+    def is_subset(self, other):
+        """Return true if this codeword is a subset of the `other`.
+        `other` needs to support `__contains__` """
+        return all(x in other for x in self)
+    
+    def is_superset(self, other):
+        return all(x in self for x in other)
+    
+    def union(self, other):
+        if isinstance(other, Codeword):
+            # assert self.offset == other.offset, "Cannot union codewords with different offsets"
+            u = self.c | other.c
+        elif isinstance(other, int):
+            u = self.c | other
+        else:
+            try:
+                # _other = Codeword.from_binary(other, offset=self.offset)
+                _other = Codeword.from_binary(other)
+                u = _other.c | self.c
+            except AssertionError:
+                _other = Codeword.from_list(other)
+                u = _other.c | self.c
+        return Codeword(u)
+
+    def to_binary(self, n=-1):
+        """Returns the binary vector representation of this word"""
+        # if n is None:
+        #     n = self.c.bit_length()
+        n = max(n, self.c.bit_length())
+        # if n < self.c.bit_length():
+        #     raise ValueError(f"Cannot represent Codeword {self} with {n} bits")
+        return np.array([(self.c >> k) & 1 for k in range(n)])
+        # return np.array([int(d) for d in bin(self.c)[:1:-1]])
+
+    @staticmethod
+    def from_binary(vec):
+        assert all(0 <= c_i <= 1 for c_i in vec), f"Can't interpret {vec} as binary vector"
+        return Codeword(sum(c_i << i for i, c_i in enumerate(vec)))
+    
+    @staticmethod
+    def from_list(itr):
+        """Construct a codeword from a list (or other iterable) of integers."""
+        return Codeword(sum(2 ** i for i in itr))
+
+
+@dataclass
+class CombinatorialCode:
+    """A collection of codewords"""
+    words: set[Codeword]
+    n: int
+    # offset: int = 1
+    
+
+    def __str__(self):
+        # words_part = ", ".join(str(Codeword(c, self.offset)) for c in self.words)
+        words_part = ", ".join(str(c) for c in sorted(self.words))
+        return f"{{{words_part}}}"
+
+
+    def __iter__(self):
+        # return (Codeword(c, self.offset) for c in self.words)
+        return self.words.__iter__()
+    
+    
+    def __contains__(self, word):
+        return word in self.words
+    
+
+    def __len__(self):
+        return len(self.words)
+    
+
+    def __hash__(self):
+        if len(self.words):
+            return int(sum(1 << int(w) for w in self.words))  # TODO probably dangerous
+        return 0
+    
+
+    def __eq__(self, other):
+        return self.n == other.n and hash(self) == hash(other)
+    
+    def is_subset(self, other):
+        return all(x in other for x in self)
+    
+
+    def intersect(self, other):
+        assert self.n == other.n, "Cannot intersect codes on different ground sets"
+        # assert self.offset == other.offset, "Cannot intersect codes with different offsets"
+        new_words = self.words.intersection(other.words)
+        return CombinatorialCode(new_words, n=self.n)
+
+    def root(self):
+        """Return the intersection of all codewords in this code"""
+        ans = 2 ** self.n - 1
+        ans = np.bitwise_and.reduce([int(w) for w in self.words], initial=ans)
+        return Codeword(ans)
+    
+
+    def trunk(self, sigma):
+        """Find all codewords that contain `sigma`.
+        `sigma` needs to be a container"""
+        # return CombinatorialCode(np.array([w.c for w in self if w.is_superset(sigma)]), self.n, self.offset)
+        return CombinatorialCode(set(w for w in self if w.is_superset(sigma)), self.n)
+    
+
+    def trunks(self):
+        """Return a set of all trunks. Note this is a naive implementation
+        that iterates over all subsets of [n] and then returns a `set` object"""
+        sigmas = (Codeword(s) for s in range(2 ** self.n))
+        trunks = (self.trunk(sigma) for sigma in sigmas)
+        # return set(trunks)
+        return set(trunks)
+        # return set(self.trunk(Codeword(s, self.offset)) for s in range(2 ** self.n))
+        # for s in range(2 ** self.n):
+        #     sigma = Codeword(s, self.offset)
+
+
+    def closure(self, sigma):
+        """Return the root of the trunk generated by sigma"""
+        return self.trunk(sigma).root()
+    
+
+    def kernel(self, sigma):
+        # """Return the root of the intersection of all trunks that contain sigma"""
+        """Return the union of all roots that are contained in sigma"""
+        trunks = [T for T in self.trunks() if sigma in T]
+
+
+    def intersection_completion(self):
+        """Returns a new code consisting of all intersections of words in this code"""
+        new_words = [T.root() for T in self.trunks()]
+        return CombinatorialCode(new_words, self.n)
+    
+
+    def covering_trunks(self, index):
+        """Returns the trunks that define the morphism C -> C^(index)"""
+        Ti = self.trunk([index])
+        assert len(Ti) > 0, f"{index} is a trivial neuron"
+        # Tjs = [self.trunk([j + self.offset]) for j in range(self.n) if j != index]
+        singles = []
+        pairs = []
+        for j in range(self.n):
+            Tj = self.trunk([j])
+            if not Tj == Ti and Tj not in singles:
+                singles.append(Tj)
+            Tij = Tj.intersect(Ti)
+            if not Tij == Ti and Tij not in pairs:
+                pairs.append(Tij)
+        return singles + pairs
+        # trunks = [Tj for Tj in Tjs if not Tj == Ti] + [Tj.intersect(Ti) for Tj in Tjs if not Tj.intersect(Ti) == Ti]
+        # return trunks
+
+    def reduce(self):
+        """Return a reduced representative of this code's isomorphism class.
+        May take a long time to compute for larger codes!"""
+        raise NotImplementedError("Can't reduce codes yet")
+    
+
+    # def delete_neuron(self, i):
+    #     """Returns a new code on [n-1] with neuron i deleted"""
+    #     _i = i
+    #     vertex_mapper = {j: j - int(j > _i) for j in range(self.n) if j != i}
+        
+
+
+    @staticmethod
+    def from_matrix(mtx : np.ndarray, order="rows"):
+        assert order in ["rows", "cols", "columns"], f"Can't interpret {order = }"
+        if not order == "rows":
+            mtx = mtx.T
+        # words = np.unique(mtx.dot(np.array([1 << i for i in range(mtx.shape[1])])))
+        # return CombinatorialCode(words, mtx.shape[1], offset)
+        words = set(Codeword.from_binary(w) for w in mtx)
+        return CombinatorialCode(words, mtx.shape[1])
+    
+    
+    @staticmethod
+    def from_list(lists: list, n=None):
+        if n is None:
+            nonempty_words = (l for l in lists if len(l))
+            n = 0
+            for c in nonempty_words:
+                n = max(n, max(c))
+            # if len(nonempty_words):
+            #     n = max(max(l) for l in nonempty_words) + 1 - offset
+            # else:
+            #     n = 0
+        codewords = set(Codeword.from_list(l) for l in lists)
+        # words = np.unique([w.c for w in codewords])
+        return CombinatorialCode(codewords, n)
+    
+
+class FullCode(CombinatorialCode):
+    """The full Boolean lattice. Generated lazily, rather than
+    storing all 2^n codewords."""
+
+    def __init__(self, n, offset=1):
+        super().__init__(set(), n, offset)
+    # def __str__(self):
+    #     return super().__str__()
+    
+    def __str__(self):
+        return rf"2^{{[{self.n}]}}"
+    
+    def __iter__(self):
+        return (Codeword(c) for c in range(2 ** self.n))
+    
+    def __len__(self):
+        return 2 ** self.n
+    
+    def __hash__(self):
+        return 2 ** (2 ** self.n) - 1
+    
+    def __contains__(self, word):
+        if len(word):
+            return max(word) + word.offset <= self.n
+        else:
+            return True
+    
+    def __eq__(self, other):
+        if isinstance(other, FullCode):
+            return self.n == other.n
+        return super().__eq__(other)
+    
+
+
+class PseudoMonomial:
+    """Represents a polynomial of the form x^sigma (1-x)^tau, where sigma and tau are subsets of {0,...,n-1},
+    modulor the boolean relations x_i (1 - x_i). So, if sigma and tau are not disjoint, this is 0.
+    Because this is python, we use 0-based indexing.
+    
+    If sigma and tau are both empty, then this represents 0."""
+    # sigma: set
+    # tau: set
+    # n: int
+    # sigma: np.ndarray
+    # tau: np.ndarray
+    
+    def __init__(self, s, t) -> None:
+        # for name, var in zip(["sigma","tau"], [s, t]):
+        #     if any((x < 0) or not isinstance(x, int) for x in var):
+        #         raise ValueError(f"{name} must be a subset of [0,...,n-1] (got {s} of type {type(s) = })")
+        # self.sigma = set(s)
+        # self.tau = set(t)
+        # if n is None:
+        #     n = 0
+        #     if len(self.sigma) > 0:
+        #         n = max(n, max(self.sigma))
+        #     if len(self.tau) > 0:
+        #         n = max(n, max(self.tau))
+        #     # n = max(max(self.sigma), max(self.tau))
+        # self.n = n
+        self.sigma = np.sort(s).astype(int)
+        self.tau = np.sort(t).astype(int)
+        if len(np.intersect1d(self.sigma, self.tau, assume_unique=True)):
+            self.sigma = np.array([], dtype=int)
+            self.tau = np.array([], dtype=int)
+
+    @property
+    def degree(self):
+        
+        return len(self.sigma) + len(self.tau)
+    
+    @property
+    def deg(self):
+        return self.degree
+    
+    @property
+    def xdeg(self):
+        return len(self.sigma)
+    
+    @property
+    def ydeg(self):
+        return len(self.tau)
+    
+    @property
+    def finedeg(self):
+        return (self.xdeg, self.ydeg)
+
+
+    def __str__(self) -> str:
+        # ans = ""
+        if 0 == len(self.sigma) == len(self.tau):
+            return "0"
+        sigma_part = " ".join(f"x_{s}" for s in self.sigma)
+        tau_part = " ".join(f"(1 - x_{t})" for t in self.tau)
+        ans = " ".join([sigma_part, tau_part])
+        return ans.strip()
+    
+    def __repr__(self) -> str:
+        return f"PseudoMonomial({self.sigma.__repr__()}, {self.tau.__repr__()})"
+        # , {self.n}
+
+    def __eq__(self, value):
+        if isinstance(value, int):
+            return value == 0 and 0 == len(self.sigma) == len(self.tau)
+        if isinstance(value, PseudoMonomial):
+            try:
+                return np.all(self.sigma == value.sigma) and np.all(self.tau == value.tau)
+            except ValueError:
+                return False
+        return ValueError(f"Cannot compare Pseudomonomial to value of type {type(value)}")
+    
+    def __mul__(self, other):
+        if isinstance(other, int):
+            if other % 2 == 0:
+                return PseudoMonomial([], [])
+            else:
+                return PseudoMonomial(self.sigma, self.tau)  # self.n
+        if isinstance(other, PseudoMonomial):
+            # return PseudoMonomial(self.sigma.union(other.sigma), self.tau.union(other.tau))  # max(self.n, other.n)
+            return PseudoMonomial(np.union1d(self.sigma, other.sigma), np.union1d(self.tau, other.tau))
+        raise TypeError(f"Cannot multiply pseudomonomial by {other=} of type {type(other)=}")
+    
+
+    def __rmul__(self, other):
+        return self * other
+    
+    
+    def divides(self, other):
+        if not isinstance(other, PseudoMonomial):
+            raise TypeError(f"Can only check if pseudomonomials divide other pseudomonomials (got {type(other)=})")
+        return set(self.sigma).issubset(set(other.sigma)) and set(self.tau).issubset(set(other.tau))
+        # return self.sigma.issubset(other.sigma) and self.tau.issubset(other.tau)
+    
+
+    def __call__(self, x):
+        """Evaluate this pseudomonomial at a point or multiple points"""
+        if isinstance(x, Codeword):
+            return self.__call_Codeword__(x)
+        elif isinstance(x, np.ndarray):
+            if x.ndim == 1:
+                return self.__call_1darray__(x)
+            elif x.ndim == 2:
+                return self.__call_2darray__(x)
+            else:
+                raise ValueError(f"Cannot call Pseudomonomial on array with shape {x.shape}")
+        else:  # assume x is an iterable and we want to call self on each element
+            return [self(c) for c in x]
+    
+
+    def __call_1darray__(self, x: np.ndarray):
+        """Call this on a numpy array representing a single binary codeword"""
+        return int(np.all(x[self.sigma]) and not np.any(x[self.tau]))
+    
+    def __call_2darray__(self, x: np.ndarray):
+        """Call this on a matrix whose rows represent codewords"""
+        return (np.all(x[:, self.sigma], axis=1) & ~np.any(x[:, self.tau], axis=1)).T.astype(int)
+
+    def __call_Codeword__(self, x: Codeword):
+        """Call this on a Codeword object."""
+        _x = x.to_binary(n = self._max_index() + 1)
+        return self.__call_1darray__(_x)
+
+    def _max_index(self):
+        """The highest index of a variable that appears in this pseudomonomial"""
+        return max(max(self.sigma, default=0), max(self.tau, default=0))
+    
+    def to_array(self, n=None):
+        """Return the signed array representation of this pseudomonomial.
+        Returns an array of shape (n,). If n is None, use the maximum element in sigma, tau"""
+        if n is None:
+            n = self._max_index()
+            # n = 0
+            # if len(self.sigma) > 0:
+            #     n = np.max(self.sigma, )
+            # if len(self.tau) > 0:
+            #     n = max(n, max(self.tau))
+        ans = np.zeros(n, dtype=int)
+        ans[self.sigma] = 1
+        ans[self.tau] = -1
+        return ans
+    
+    
+    def from_array(arr):
+        """Converts a vector of +/-1s into a pseudomonomial;
+        sigma is the set of indices with a +1, tau is the set of indices with a -1."""
+        return PseudoMonomial(np.nonzero(arr > 0)[0], np.nonzero(arr < 0)[0])
+
+    def __hash__(self):
+        return hash((tuple(self.sigma), tuple(self.tau)))
+
+
+class CanonicalForm:
+    """The canonical form of a code. Mutable object can be updated by adding words."""
+    def __init__(self, n=0):
+        self.n = n
+        self.words = set()
+        self.gens = set()
+
+    
+    def __str__(self):
+        return ", ".join(str(p) for p in self.gens)
+
+
+    def _singleton(self, word):
+        """Returns the set of pseudomonomials that vanish on a single codeword"""
+        pms = set()
+        for i in range(self.n):
+            if i in word:
+                pms.add(PseudoMonomial([], [i]))
+            else:
+                pms.add(PseudoMonomial([i], []))
+        return pms
+
+
+    def add_word(self, word):
+        """Add a word to the code """
+        self.words.add(word)
+        cf_word = self._singleton(word)
+        if len(self.gens) == 0:
+            self.gens.update(cf_word)
+        else:
+            needs_updating = set()
+            for p in self.gens:
+                if p(word):  # is not 0
+                    needs_updating.add(p)
+            self.gens.difference_update(needs_updating)
+            for p in needs_updating:
+                for q in cf_word:
+                    pq = p * q
+                    if not pq == 0 and not any(g.divides(pq) for g in self.gens):
+                        self.gens.add(pq)
