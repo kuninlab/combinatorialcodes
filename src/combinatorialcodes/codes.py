@@ -157,6 +157,7 @@ class CombinatorialCode:
         # """Return the root of the intersection of all trunks that contain sigma"""
         """Return the union of all roots that are contained in sigma"""
         trunks = [T for T in self.trunks() if sigma in T]
+        raise NotImplementedError("Can't compute code kernels yet")
 
 
     def intersection_completion(self):
@@ -189,10 +190,11 @@ class CombinatorialCode:
         raise NotImplementedError("Can't reduce codes yet")
     
 
-    # def delete_neuron(self, i):
-    #     """Returns a new code on [n-1] with neuron i deleted"""
-    #     _i = i
-    #     vertex_mapper = {j: j - int(j > _i) for j in range(self.n) if j != i}
+    def delete_neuron(self, i):
+        """Returns a new code on [n-1] with neuron i deleted"""
+        _i = i
+        vertex_mapper = {j: j - int(j > _i) for j in range(self.n) if j != i}
+        raise NotImplementedError("Can't delete neurons yet")
         
 
 
@@ -291,7 +293,7 @@ class PseudoMonomial:
 
     @property
     def degree(self):
-        
+
         return len(self.sigma) + len(self.tau)
     
     @property
