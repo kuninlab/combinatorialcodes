@@ -41,13 +41,11 @@ class Codeword:
     
     def union(self, other):
         if isinstance(other, Codeword):
-            # assert self.offset == other.offset, "Cannot union codewords with different offsets"
             u = self.c | other.c
         elif isinstance(other, int):
             u = self.c | other
         else:
             try:
-                # _other = Codeword.from_binary(other, offset=self.offset)
                 _other = Codeword.from_binary(other)
                 u = _other.c | self.c
             except AssertionError:
@@ -81,17 +79,14 @@ class CombinatorialCode:
     """A collection of codewords"""
     words: set[Codeword]
     n: int
-    # offset: int = 1
     
 
     def __str__(self):
-        # words_part = ", ".join(str(Codeword(c, self.offset)) for c in self.words)
         words_part = ", ".join(str(c) for c in sorted(self.words))
         return f"{{{words_part}}}"
 
 
     def __iter__(self):
-        # return (Codeword(c, self.offset) for c in self.words)
         return self.words.__iter__()
     
     
@@ -118,7 +113,6 @@ class CombinatorialCode:
 
     def intersect(self, other):
         assert self.n == other.n, "Cannot intersect codes on different ground sets"
-        # assert self.offset == other.offset, "Cannot intersect codes with different offsets"
         new_words = self.words.intersection(other.words)
         return CombinatorialCode(new_words, n=self.n)
 
@@ -132,7 +126,6 @@ class CombinatorialCode:
     def trunk(self, sigma):
         """Find all codewords that contain `sigma`.
         `sigma` needs to be a container"""
-        # return CombinatorialCode(np.array([w.c for w in self if w.is_superset(sigma)]), self.n, self.offset)
         return CombinatorialCode(set(w for w in self if w.is_superset(sigma)), self.n)
     
 
@@ -143,9 +136,6 @@ class CombinatorialCode:
         trunks = (self.trunk(sigma) for sigma in sigmas)
         # return set(trunks)
         return set(trunks)
-        # return set(self.trunk(Codeword(s, self.offset)) for s in range(2 ** self.n))
-        # for s in range(2 ** self.n):
-        #     sigma = Codeword(s, self.offset)
 
 
     def closure(self, sigma):
@@ -170,7 +160,6 @@ class CombinatorialCode:
         """Returns the trunks that define the morphism C -> C^(index)"""
         Ti = self.trunk([index])
         assert len(Ti) > 0, f"{index} is a trivial neuron"
-        # Tjs = [self.trunk([j + self.offset]) for j in range(self.n) if j != index]
         singles = []
         pairs = []
         for j in range(self.n):
@@ -203,8 +192,6 @@ class CombinatorialCode:
         assert order in ["rows", "cols", "columns"], f"Can't interpret {order = }"
         if not order == "rows":
             mtx = mtx.T
-        # words = np.unique(mtx.dot(np.array([1 << i for i in range(mtx.shape[1])])))
-        # return CombinatorialCode(words, mtx.shape[1], offset)
         words = set(Codeword.from_binary(w) for w in mtx)
         return CombinatorialCode(words, mtx.shape[1])
     
@@ -216,10 +203,6 @@ class CombinatorialCode:
             n = 0
             for c in nonempty_words:
                 n = max(n, max(c))
-            # if len(nonempty_words):
-            #     n = max(max(l) for l in nonempty_words) + 1 - offset
-            # else:
-            #     n = 0
         codewords = set(Codeword.from_list(l) for l in lists)
         # words = np.unique([w.c for w in codewords])
         return CombinatorialCode(codewords, n)
@@ -229,8 +212,8 @@ class FullCode(CombinatorialCode):
     """The full Boolean lattice. Generated lazily, rather than
     storing all 2^n codewords."""
 
-    def __init__(self, n, offset=1):
-        super().__init__(set(), n, offset)
+    def __init__(self, n):
+        super().__init__(set(), n)
     # def __str__(self):
     #     return super().__str__()
     
@@ -248,7 +231,7 @@ class FullCode(CombinatorialCode):
     
     def __contains__(self, word):
         if len(word):
-            return max(word) + word.offset <= self.n
+            return max(word) <= self.n
         else:
             return True
     
