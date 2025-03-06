@@ -6,5 +6,9 @@ This is currently in development. If you want to try it out you can install it w
 
 `pip install git+https://github.com/kuninlab/combinatorialcodes.git`
 
+and uninstall it with
+
+`pip uninstall combinatorialcodes`
+
 
 [1] [Curto, C., Itskov, V., Veliz-Cuba, A. et al. The Neural Ring: An Algebraic Tool for Analyzing the Intrinsic Structure of Neural Codes. Bull Math Biol 75, 1571–1611 (2013).](https://doi.org/10.1007/s11538-013-9860-3)
